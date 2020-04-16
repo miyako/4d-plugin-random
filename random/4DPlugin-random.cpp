@@ -66,7 +66,7 @@ static BOOL generate_random(std::vector<unsigned char> &buf,
                 if (BCRYPT_SUCCESS(
                                     BCryptOpenAlgorithmProvider(&h,
                                                                 BCRYPT_RNG_ALGORITHM,
-                                                                NULL,
+                                                                MS_PRIMITIVE_PROVIDER,
                                                                 0))) {
                     BOOL success = BCRYPT_SUCCESS(BCryptGenRandom(h,
                                                                   (PUCHAR) &buf[0],
@@ -96,8 +96,10 @@ void generate_random_number(PA_PluginParameters params) {
     
     if(generate_random(buf, size)) {
         
-        PA_long32 returnValue = (buf[0] << 24) + (buf[1] << 16) + (buf[2] << 0) + (buf[3]);
-       
+        PA_long32 returnValue = 0;
+        
+        memcpy(&returnValue, &buf[0], sizeof(PA_long32));
+               
         ob_set_b(status, L"success", true);
         ob_set_n(status, L"value", returnValue);
         
