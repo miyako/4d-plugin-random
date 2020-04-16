@@ -1,0 +1,16 @@
+{
+    "name": "random",
+    "id": 20000,
+    "commands": [
+        {
+            "theme": "random",
+            "syntax": "generate random number(&J):J",
+            "threadSafe": true
+        },
+        {
+            "theme": "random",
+            "syntax": "generate random bytes(&J):O",
+            "threadSafe": true
+        }
+    ]
+}

@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<xliff version="1.0" xmlns:d4="http://www.4d.com/d4-ns">
+    <header>
+        <note>random</note>
+    </header>
+    <group resname="themes">
+        <trans-unit id="" resname="F6D73EB07CDB43E7B486B96D3A8993BC" translate="no">
+            <source>random</source>
+        </trans-unit>
+    </group>
+    <group restype="x-4DK#" d4:groupName="F6D73EB07CDB43E7B486B96D3A8993BC">
+    </group>
+</xliff>
