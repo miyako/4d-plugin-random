@@ -10,6 +10,9 @@
 
 #include "4DPlugin-random.h"
 
+#include <cmath>
+#include <limits>
+
 #pragma mark -
 
 void PluginMain(PA_long32 selector, PA_PluginParameters params) {
@@ -89,44 +92,83 @@ static BOOL generate_random(std::vector<unsigned char> &buf,
 void generate_random_number(PA_PluginParameters params) {
 
     PA_ObjectRef status = PA_CreateObject();
-    
-    size_t size = sizeof(PA_long32);
-    
-    std::vector<unsigned char>buf(size);
-    
-    if(generate_random(buf, size)) {
-        
-        PA_long32 returnValue = 0;
-        
-        memcpy(&returnValue, &buf[0], sizeof(PA_long32));
-               
-        ob_set_b(status, L"success", true);
-        ob_set_n(status, L"value", returnValue);
-        
-    }else {
-        
+
+    try {
+
+        size_t size = sizeof(PA_long32);
+
+        std::vector<unsigned char>buf(size);
+
+        if(generate_random(buf, size)) {
+
+            PA_long32 returnValue = 0;
+
+            memcpy(&returnValue, &buf[0], sizeof(PA_long32));
+
+            ob_set_b(status, L"success", true);
+            ob_set_n(status, L"value", returnValue);
+
+        }else {
+
+            ob_set_b(status, L"success", false);
+
+        }
+
+    } catch(...) {
+        // Guarantee a well-formed response even on an unexpected
+        // allocation/runtime failure, rather than leaving the caller
+        // with no return value at all.
         ob_set_b(status, L"success", false);
-        
     }
-    
+
     PA_ReturnObject(params, status);
 }
 
 void generate_random_bytes(PA_PluginParameters params) {
 
     PA_ObjectRef options = PA_GetObjectParameter(params, 1);
-    
+
     size_t size = sizeof(PA_long32);
-    
+    bool sizeIsValid = true;
+
     if(options) {
         if(ob_is_defined(options, L"size")) {
-            size = static_cast<size_t>(ob_get_n(options, L"size"));
+
+            double requested = ob_get_n(options, L"size");
+
+            // Reject anything that isn't a finite, non-negative value that
+            // fits within our safe upper bound. This avoids:
+            //  - undefined behavior from casting a negative/NaN/Inf double
+            //    to size_t,
+            //  - an unbounded allocation (DoS/freeze) from a huge value,
+            //  - silent truncation further down when the value is passed
+            //    into a 32-bit ULONG parameter (BCryptGenRandom on Windows).
+            if(!std::isfinite(requested) ||
+               requested < 0 ||
+               requested > static_cast<double>(kMaxRandomBytes)) {
+                sizeIsValid = false;
+            } else {
+                size = static_cast<size_t>(requested);
+            }
         }
     }
-    
+
     std::vector<unsigned char>buf(0);
-    
-    if(generate_random(buf, size)) {
+
+    bool ok = false;
+
+    if(sizeIsValid) {
+        try {
+            ok = generate_random(buf, size);
+        } catch(...) {
+            // e.g. std::bad_alloc / std::length_error from an allocation
+            // failure; fall through and report failure below rather than
+            // leaving the caller with no return value.
+            ok = false;
+        }
+    }
+
+    if(ok) {
         PA_ReturnBlob(params, buf.data(), (PA_long32)buf.size());
     }else {
         PA_ReturnBlob(params, (void *)"", 0);

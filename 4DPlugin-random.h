@@ -27,6 +27,18 @@
 #pragma comment(lib, "bcrypt")
 #endif
 
+// Upper bound on the number of random bytes that can be requested in a
+// single call. This protects against:
+//  - unbounded/huge memory allocations from a malicious or buggy "size"
+//    parameter (DoS / freeze / std::bad_alloc)
+//  - silent truncation when the value is passed into APIs that take a
+//    32-bit ULONG (e.g. BCryptGenRandom's cbBuffer on Windows), which would
+//    otherwise fill only part of the buffer and return uninitialized bytes
+//    as if they were random.
+// 64 MB is far more than any reasonable caller needs but comfortably below
+// any 32-bit limit.
+static const size_t kMaxRandomBytes = 64UL * 1024UL * 1024UL;
+
 static void generate_random_number(PA_PluginParameters params);
 static void generate_random_bytes(PA_PluginParameters params);
 
