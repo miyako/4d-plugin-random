@@ -64,21 +64,18 @@ static BOOL generate_random(std::vector<unsigned char> &buf,
                     return TRUE;
                 }
 #else
-                BCRYPT_ALG_HANDLE h = NULL;
-
-                if (BCRYPT_SUCCESS(
-                                    BCryptOpenAlgorithmProvider(&h,
-                                                                BCRYPT_RNG_ALGORITHM,
-                                                                MS_PRIMITIVE_PROVIDER,
-                                                                0))) {
-                    BOOL success = BCRYPT_SUCCESS(BCryptGenRandom(h,
-                                                                  (PUCHAR) &buf[0],
-                                                                  size,
-                                                                  0));
-                    BCryptCloseAlgorithmProvider(h, 0);
-                    
-                    return success;
-                }
+                // Use the system-preferred RNG directly rather than opening
+                // a fresh BCRYPT_RNG_ALGORITHM provider handle on every
+                // call. This is Microsoft's documented recommended usage
+                // (no handle to open/close), and avoids the per-call
+                // overhead of BCryptOpenAlgorithmProvider/
+                // BCryptCloseAlgorithmProvider, which otherwise gets paid
+                // on every single invocation of these commands.
+                BOOL success = BCRYPT_SUCCESS(BCryptGenRandom(NULL,
+                                                              (PUCHAR) &buf[0],
+                                                              (ULONG)size,
+                                                              BCRYPT_USE_SYSTEM_PREFERRED_RNG));
+                return success;
 #endif
                 break;
         }
