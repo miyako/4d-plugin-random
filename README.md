@@ -14,6 +14,118 @@
 
 **Platforms:** macOS · Windows
 
+## Manual versioning and publication
+
+**Bump version** and **Build** are separate manual Actions. Neither runs on a
+push or pull request. Select the intended branch in Actions; Bump accepts only
+`patch`, `minor`, or `major`. It validates the selected immutable `github.sha`,
+the clean checkout, and the unchanged remote branch, then commits source
+metadata only. It never tags, releases, builds, or dispatches another workflow.
+The executable `.github/scripts/bump-hooks/pre-push` is mandatory both before
+editing and immediately before pushing. Its advertised-ref check permits exactly
+one branch update, from the exact selected old SHA to literal new HEAD, with
+exactly one direct parent. Advance, rewind, deletion, and same-result races fail.
+The non-force push disables follow-tags both in config and on the command line.
+
+Run **Build** separately on the desired branch. Its exact name is `Build` and
+its `workflow_dispatch` has **zero inputs** (only GitHub's branch selector).
+All checkouts use `github.sha`, not a mutable branch or existing tag. Strict,
+consistent source `X.Y.Z` determines `vX.Y.Z`, `random-X.Y.Z.zip`, and
+`random-X.Y.Z.dmg`; suffixes, leading zeros, duplicate keys, and drift fail.
+Coordinated source authority consists of six each `MARKETING_VERSION` and
+`CURRENT_PROJECT_VERSION` assignments in `random.xcodeproj/project.pbxproj`,
+`Info.plist`'s display version and build version **if already present**, and
+`English.lproj/InfoPlist.strings`' display and descriptive versions.
+Valid Xcode references are preserved, not replaced with literals. Bumps preserve
+file modes, BOMs, CR-only/CRLF/mixed endings, and unrelated bytes. Prebuilt
+bundles, libraries, dependencies, and 4D database counters are not bump inputs.
+
+### Authority and migration
+
+At intake, the repository API's `default_branch` and symbolic `origin/HEAD`
+both identified `master`. The committed workflows were a manual, tag-producing
+Bump and a tag-push/typed-tag-dispatch Build & Release; neither had PR triggers.
+Rename-follow history leads to
+[`9aef13edc6a339fa2740223c617e33afd7df0f21`](https://github.com/miyako/4d-plugin-random/commit/9aef13edc6a339fa2740223c617e33afd7df0f21):
+its Bump header explicitly coordinates MARKETING, CURRENT, and plist fields.
+That declared policy wins over the buggy marketing-first implementation.
+Existing marketing and source plist authority is **1.0.5**. This migration
+repairs six stale CURRENT values (`1.0.3`) and source localized display metadata
+(`1.0.1`) to **1.0.5**, without an intake increment or insertion of the absent
+`CFBundleVersion`. The Xcode `PBXVariantGroup` selects
+`English.lproj/InfoPlist.strings` through file reference
+`089C167EFE841241C02AAC07` and resource build file `8D01CCCA0486CAD60068D4B7`.
+Only this source localization is repaired and co-bumped, preserving its CR-only
+bytes and executable mode.
+`test/Plugins/random.bundle/Contents/Resources/English.lproj/InfoPlist.strings`
+is a **prebuilt destination**, not a source input: its UTF-16LE BOM, CR-only
+content and stale `1.0.1` remain unchanged, as do the prebuilt plist and binaries.
+Build invalidates, rebuilds and validates those exact metadata destinations.
+
+The complete committed workflows, helpers, and tests used as prior art are:
+
+- [`miyako/4d-plugin-native-encoding-detection@c42ca565857f674bde5ea6ed3435c87375eda4a7`](https://github.com/miyako/4d-plugin-native-encoding-detection/tree/c42ca565857f674bde5ea6ed3435c87375eda4a7/.github)
+- [`miyako/4d-plugin-file-information@19848973601acfd3a2b5070230fa40cdc7e4edb2`](https://github.com/miyako/4d-plugin-file-information/tree/19848973601acfd3a2b5070230fa40cdc7e4edb2/.github)
+- [`miyako/4d-plugin-common-string-algorithm@2606a68201866ec9fcbb38b51462d79215f504ef`](https://github.com/miyako/4d-plugin-common-string-algorithm/tree/2606a68201866ec9fcbb38b51462d79215f504ef/.github)
+- [`miyako/4d-plugin-window-button@3f14facb9aaaaff0e22eeb8e07531163680c3a8a`](https://github.com/miyako/4d-plugin-window-button/tree/3f14facb9aaaaff0e22eeb8e07531163680c3a8a/.github)
+- [`miyako/4d-plugin-raw-picture-data@8144537fdc8dcc3d0c053dfe97aff0a8c0c3a6f9`](https://github.com/miyako/4d-plugin-raw-picture-data/tree/8144537fdc8dcc3d0c053dfe97aff0a8c0c3a6f9/.github), including lexical same-line quoted/unquoted duplicate-assignment detection for both project version keys.
+
+### Native pipeline and publication safety
+
+Build retains Windows x64 MSBuild Release (`v143` and Windows SDK `10.0`
+overrides) followed by macOS `Default`, `arm64 x86_64`, deployment override
+`11.0`, and disabled Xcode signing before the original Developer ID signing
+steps. Windows output comes only from the actual Release|x64 OutDir,
+`test/plugins/random.bundle/contents/windows64/random.4DX`, and the downloaded
+artifact must be exactly `winbuild/random.4DX`; recursive stale-first searches
+are forbidden. Cleanup invalidates exact rebuilt outputs and fails on errors,
+preserving committed Windows files, QuickLook and other resources.
+`lipo -verify_arch arm64 x86_64` requires both slices. Rebuilt plist and localized
+metadata (including UTF-16 or binary plist strings) must match selected source.
+The original pipeline has no i386 exclusion gate; none is invented here.
+The Xcode copy phase remains unchanged: both `manifest.json` and `constants.xlf`
+use `dstSubfolderSpec = 7` and `dstPath = ..` (the Contents root). The already
+committed `Contents/Resources/constants.xlf`, root manifest, and other resource
+files are preserved; no nonexistent `Resources/manifest.json` gate is added.
+
+The existing certificate and notary secret **names** are unchanged:
+`APPLE_DEVELOPER_ID_CERTIFICATE`, `APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD`,
+`KEYCHAIN_PASSWORD`, `NOTARYTOOL_APPLE_ID`, `NOTARYTOOL_TEAM_ID`, and
+`NOTARYTOOL_PASSWORD`. Both ZIP and DMG notarization require a successful command
+**and** JSON status `Accepted`; DMG stapling must succeed before publication.
+The original empty release body and ZIP/DMG assets are retained.
+
+One constant cross-branch publication concurrency group uses
+`cancel-in-progress: false`. Before any native work, and again after all native,
+signing, notarization and stapling gates, authenticated, fully paginated release
+lists (including drafts) and exact remote tag absence are required.
+HTTP 404/auth/network failures, malformed responses, and errors on later pages
+fail closed. Publication uses create-only `POST git/refs` at the selected SHA,
+verifies that remote tag, then a separate `POST releases` with explicit tag,
+name, target, empty body, `draft: false`, and `prerelease: false`.
+Assets upload only to that newly returned release ID. No existing release is
+reused or updated; no deletion, clobber, retry, or rollback is performed.
+
+**Partial-publication recovery:** failures retain any created tag, release, and
+uploaded assets as evidence. Inspect the failed run, exact remote tag SHA,
+release ID and assets before any operator action. Do not rerun Build expecting
+it to overwrite or finish a partial release: availability checks intentionally
+reject that state. Resolve retained state manually under repository policy, or
+use a new reviewed source version and Build. The automation never deletes
+evidence or automatically cleans up a failed publication.
+
+Offline regression checks (no real native/signing/notary/4D execution):
+
+```sh
+actionlint
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s .github/tests -v
+```
+
+The suites use disposable Git/bare-origin repositories, mocked authenticated
+API responses, and closed-PATH native/PowerShell stubs. Run the same suite in a
+disposable copy after a genuinely guarded helper Bump to ensure fixtures derive
+their versions from source, rather than relying on this intake version.
+
 ---
 
 ## Requirements & platform notes
