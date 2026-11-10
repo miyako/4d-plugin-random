@@ -121,10 +121,75 @@ actionlint
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s .github/tests -v
 ```
 
-The suites use disposable Git/bare-origin repositories, mocked authenticated
+The workflow suites use disposable Git/bare-origin repositories, mocked authenticated
 API responses, and closed-PATH native/PowerShell stubs. Run the same suite in a
 disposable copy after a genuinely guarded helper Bump to ensure fixtures derive
 their versions from source, rather than relying on this intake version.
+
+### Native string ownership audit
+
+The ownership regression additionally compiles real native sources on macOS;
+it does not run 4D or any release workflow. Run it independently with:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 .github/tests/test_ownership.py -v
+```
+
+Audit baseline: `a75f3ada73fdfea2d74c78b955cfc5b31de50f24`. Guidance:
+[`miyako/skills` at `e6b492f`](https://github.com/miyako/skills/blob/e6b492fcb81e5e1a7f7db723594b420e63bf6eb9/4d-skills/skills/4dplugin/SKILL.md)
+(merged PRs 69 and 71). The bundled SDK implementation SHA-256 is
+`5bac571c5c4cafd280fa7f23d775458a23701287e8735be27d4a2190002f4e3f`.
+Its `rev : v14` comment is not an upstream release identity.
+
+| First-party surface | Build/command reachability | Ownership result |
+|---|---|---|
+| `4DPlugin-random.cpp`, headers, source and bundled manifests | Both projects compile dispatcher selectors 1/2; commands use object parameters and object/blob results | `ob_get_n` is reachable through `options.size`, including a string-valued mismatch. Returned status objects transfer to 4D without local disposal. |
+| `support/4DPlugin-JSON.cpp/.h` | Entire helper compiled on macOS/Windows; only boolean/numeric setters, property existence and numeric getter currently called by commands | Four string setters now start Undefined before receiving an independent owned string. String/boolean/number getters clear the owning property result after copying, even for mismatches. Collection mismatch clears; a successful collection reference still transfers to the caller. |
+| `C_TEXT`, `C_BLOB`/`CBytes`, `C_LONGINT`, `C_TYPES` | Compiled wrappers, dormant from current command bodies | Text parameter reads copy borrowed content; output uses the engine content setter, not array transfer. Blob text conversions use local copied strings. |
+| `ARRAY_TEXT` | Tracked but absent from both native project source lists | Reads copy array elements before mutation; writes allocate independent strings and transfer them without local disposal. No normal-path string lifetime defect confirmed. |
+
+Third-party jsoncpp headers/static libraries and committed prebuilt binaries are
+not implementation inputs to the fix. No `CPicture` or `C_POINTER` class,
+first-party SDK application-path/picture-data getter call, or charset bytes-to-UTF-16-unit
+conversion helper exists here. Manifest absence of text arrays is not the basis
+for excluding the dormant array wrapper.
+
+The unchanged SDK creates an initial empty allocation for
+`PA_CreateVariable(eVK_Unistring)` (line 4030), then
+`PA_SetStringVariable` shallowly overwrites the descriptor (4254-4259).
+Starting Undefined avoids losing that initial owner while retaining final
+`PA_ClearVariable` cleanup. `PA_GetObjectProperty` explicitly requires clearing
+the returned variable (636-651); copied text is consumed before that cleanup.
+The collection getter's successful result remains owning: dispose it with
+`PA_DisposeCollection` or transfer it, rather than clearing its local alias.
+`PA_SetStringInArray` disposes the old element and transfers only for accepted
+type/data/index/string conditions (4933-4948); rejected inputs stay caller-owned.
+`PA_GetStringInArray` returns a borrowed descriptor (4736-4755).
+`PA_SetUnistring` forwards buffer content to the engine (289-299); its host-side
+copy behavior is modeled separately, not inferred from the array setter.
+
+The harness includes the full unchanged SDK, actual helper, dispatcher,
+`C_TEXT` and dormant `ARRAY_TEXT`, with a shim only at `gCall4D`. It uses real
+CoreFoundation conversion, explicit ASCII/BMP/surrogate-pair/empty expectations,
+ASan/UBSan, and string/handle/reference accounting with allocated and null empty
+representations. LeakSanitizer is disabled on this macOS runner. The same final
+harness against an immutable baseline archive fails 14 subcases: four allocated
+empty setter leaks, eight property-result leaks, and two dispatcher-reachable
+mismatch leaks. The fixed source passes all six tests (24 host invocations),
+including replacement, shrink/clear, independent array outputs, rejected
+type/index/null-data destinations, scalar copies, successful object/collection
+handoffs, and synchronous stringify success/mismatch cleanup. To reproduce the
+baseline comparison, set `RANDOM_OWNERSHIP_SOURCE_ROOT` to a separate extracted
+baseline tree; the harness itself still comes from the fixed tree.
+
+An unsigned arm64 Xcode `Development` build was also verified with
+`CODE_SIGNING_ALLOWED=NO` and products/intermediates outside the repository.
+The existing script skipped its Deployment-only signing/packaging/notarization
+branch. Neither that build nor the shim certifies a real 4D host, Windows, or
+Intel execution. SDK allocation-failure behavior, including resize count updates
+after failed growth, remains deferred; normal-array cases do not certify it.
+No release workflow, signing, notarization, publication or tracked binary update
+is part of this audit.
 
 ---
 
