@@ -114,7 +114,7 @@ reject that state. Resolve retained state manually under repository policy, or
 use a new reviewed source version and Build. The automation never deletes
 evidence or automatically cleans up a failed publication.
 
-Offline regression checks (no real native/signing/notary/4D execution):
+Regression checks (workflow tools mocked; no signing/notary/4D execution):
 
 ```sh
 actionlint
